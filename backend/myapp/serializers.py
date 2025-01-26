@@ -1,6 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Meal, Review
+from .models import Meal, Review, CartItem
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'is_active']
 
 class SignUpSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(
@@ -50,11 +55,6 @@ class SignUpSerializer(serializers.ModelSerializer):
         )
         return user
 
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['id', 'username', 'email']
-
 class ReviewSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
@@ -97,3 +97,46 @@ class MealSerializer(serializers.ModelSerializer):
 
     def get_review_count(self, obj):
         return obj.reviews.count()
+
+class CartItemSerializer(serializers.ModelSerializer):
+    meal = MealSerializer(read_only=True)
+    meal_id = serializers.IntegerField(write_only=True)
+    total_price = serializers.FloatField(read_only=True)
+    id = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = CartItem
+        fields = ['id', 'meal', 'meal_id', 'quantity', 'total_price']
+        read_only_fields = ['id', 'total_price']
+
+    def validate_quantity(self, value):
+        if value < 1:
+            raise serializers.ValidationError('Quantity must be at least 1')
+        return value
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        meal_id = validated_data.pop('meal_id')
+        
+        try:
+            meal = Meal.objects.get(id=meal_id)
+        except Meal.DoesNotExist:
+            raise serializers.ValidationError({'meal_id': 'Meal not found'})
+
+        # Check if item already exists in cart
+        cart_item = CartItem.objects.filter(user=user, meal=meal).first()
+        if cart_item:
+            cart_item.quantity = validated_data.get('quantity', cart_item.quantity + 1)
+            cart_item.save()
+            return cart_item
+
+        return CartItem.objects.create(
+            user=user,
+            meal=meal,
+            **validated_data
+        )
+
+    def update(self, instance, validated_data):
+        instance.quantity = validated_data.get('quantity', instance.quantity)
+        instance.save()
+        return instance

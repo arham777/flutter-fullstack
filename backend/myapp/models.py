@@ -35,3 +35,21 @@ class Review(models.Model):
     class Meta:
         ordering = ['-created_at']
         unique_together = ['meal', 'user']  # One review per meal per user
+
+class CartItem(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cart_items')
+    meal = models.ForeignKey(Meal, on_delete=models.CASCADE)
+    quantity = models.IntegerField(default=1, validators=[MinValueValidator(1)])
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def total_price(self):
+        return float(self.meal.price) * self.quantity
+
+    def __str__(self):
+        return f"{self.quantity}x {self.meal.title} for {self.user.username}"
+
+    class Meta:
+        unique_together = ['user', 'meal']
+        ordering = ['-updated_at']

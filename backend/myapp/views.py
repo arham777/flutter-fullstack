@@ -7,8 +7,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from .serializers import SignUpSerializer, MealSerializer, ReviewSerializer, UserSerializer
-from .models import Meal, Review
+from .serializers import SignUpSerializer, MealSerializer, ReviewSerializer, UserSerializer, CartItemSerializer
+from .models import Meal, Review, CartItem
 
 # Create your views here.
 
@@ -236,4 +236,163 @@ def toggle_user_status(request, user_id):
         return Response(
             {'error': 'User not found'},
             status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_cart(request):
+    """Get user's cart with all items"""
+    try:
+        cart_items = CartItem.objects.filter(user=request.user)
+        serializer = CartItemSerializer(cart_items, many=True)
+        
+        total_amount = sum(item.total_price for item in cart_items)
+        
+        return Response({
+            'items': serializer.data,
+            'total_amount': total_amount
+        })
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_to_cart(request):
+    """Add item to cart or increment quantity if exists"""
+    try:
+        meal_id = request.data.get('meal_id')
+        quantity = int(request.data.get('quantity', 1))
+
+        if not meal_id:
+            return Response(
+                {'error': 'meal_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            meal = Meal.objects.get(id=meal_id)
+        except Meal.DoesNotExist:
+            return Response(
+                {'error': 'Meal not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get or create cart item
+        cart_item, created = CartItem.objects.get_or_create(
+            user=request.user,
+            meal=meal,
+            defaults={'quantity': quantity}
+        )
+
+        if not created:
+            cart_item.quantity = quantity  # Use the provided quantity
+            cart_item.save()
+
+        serializer = CartItemSerializer(cart_item)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )
+
+    except ValueError as e:
+        return Response(
+            {'error': 'Invalid quantity value'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def remove_from_cart(request, item_id):
+    """Remove item from cart"""
+    try:
+        try:
+            cart_item = CartItem.objects.get(
+                id=item_id,
+                user=request.user
+            )
+        except CartItem.DoesNotExist:
+            return Response(
+                {'error': 'Cart item not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        cart_item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_cart_item(request, item_id):
+    """Update quantity of cart item"""
+    try:
+        try:
+            cart_item = CartItem.objects.get(
+                id=item_id,
+                user=request.user
+            )
+        except CartItem.DoesNotExist:
+            return Response(
+                {'error': 'Cart item not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        quantity = request.data.get('quantity')
+        if quantity is None:
+            return Response(
+                {'error': 'quantity is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            quantity = int(quantity)
+        except ValueError:
+            return Response(
+                {'error': 'quantity must be a number'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if quantity < 0:
+            return Response(
+                {'error': 'quantity must be positive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        elif quantity == 0:
+            cart_item.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        else:
+            cart_item.quantity = quantity
+            cart_item.save()
+            serializer = CartItemSerializer(cart_item)
+            return Response(serializer.data)
+
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def clear_cart(request):
+    """Clear all items from user's cart"""
+    try:
+        CartItem.objects.filter(user=request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

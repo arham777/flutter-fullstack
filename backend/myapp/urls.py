@@ -11,4 +11,11 @@ urlpatterns = [
     path('meals/<int:meal_id>/reviews/<int:review_id>/delete/', views.delete_review, name='delete-review'),
     path('users/', views.list_users, name='list-users'),
     path('users/<int:user_id>/toggle-status/', views.toggle_user_status, name='toggle-user-status'),
+    
+    # Cart endpoints
+    path('cart/', views.get_cart, name='get-cart'),
+    path('cart/add/', views.add_to_cart, name='add-to-cart'),
+    path('cart/item/<int:item_id>/', views.update_cart_item, name='update-cart-item'),
+    path('cart/item/<int:item_id>/remove/', views.remove_from_cart, name='remove-from-cart'),
+    path('cart/clear/', views.clear_cart, name='clear-cart'),
 ]

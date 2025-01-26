@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
-// import 'package:mid_app/components/meal_cards.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:provider/provider.dart';
+import '../providers/cart_provider.dart';
 import 'meal_details_page.dart';
 
-class Homepage extends StatefulWidget {
-  const Homepage({super.key});
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
 
   @override
-  State<Homepage> createState() => _HomepageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _HomepageState extends State<Homepage> {
+class _HomePageState extends State<HomePage> {
   bool isAdmin = false;
   bool _isLoading = true;
   List<Map<String, dynamic>> meals = [];
   String? token;
+  String? username;
 
   @override
   void initState() {
@@ -25,116 +27,93 @@ class _HomepageState extends State<Homepage> {
   }
 
   Future<void> _initializePreferences() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      isAdmin = prefs.getBool('isAdmin') ?? false;
+      username = prefs.getString('username');
       token = prefs.getString('token');
-      final adminStatus = prefs.getBool('isAdmin') ?? false;
-      debugPrint('Homepage - Admin status: $adminStatus');
-      setState(() {
-        isAdmin = adminStatus;
-      });
-      await fetchMeals();
-    } catch (e) {
-      debugPrint('Error loading preferences: $e');
-      setState(() {
-        isAdmin = false;
-        _isLoading = false;
-      });
-    }
+    });
+    await fetchMeals();
   }
 
   Future<void> fetchMeals() async {
     try {
-      debugPrint('Fetching meals...');
-      debugPrint('Token: $token');
+      setState(() => _isLoading = true);
       
+      if (token == null) {
+        Navigator.pushReplacementNamed(context, '/signin');
+        return;
+      }
+
       final response = await http.get(
         Uri.parse('http://127.0.0.1:8000/api/meals/'),
         headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
+          'Authorization': 'Bearer $token',
         },
       );
-
-      debugPrint('Response status: ${response.statusCode}');
-      debugPrint('Response body: ${response.body}');
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         setState(() {
-          meals = List<Map<String, dynamic>>.from(data);
+          meals = data.cast<Map<String, dynamic>>();
           _isLoading = false;
         });
       } else {
-        debugPrint('Failed to load meals: ${response.statusCode}');
-        setState(() {
-          meals = [];
-          _isLoading = false;
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to load meals: ${response.statusCode}')),
-          );
-        }
+        throw Exception('Failed to load meals');
       }
     } catch (e) {
-      debugPrint('Error fetching meals: $e');
-      setState(() {
-        meals = [];
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading meals: $e')),
+          SnackBar(content: Text('Error: $e')),
         );
       }
     }
   }
 
   Future<void> _handleLogout(BuildContext context) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
-      
-      if (context.mounted) {
-        Navigator.pushReplacementNamed(context, '/signin');
-      }
-    } catch (e) {
-      debugPrint('Error during logout: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error during logout. Please try again.')),
-        );
+    final confirmed = await _showLogoutDialog(context);
+    if (confirmed) {
+      try {
+        // Clear cart provider token
+        final cartProvider = Provider.of<CartProvider>(context, listen: false);
+        await cartProvider.setToken(null);
+
+        // Clear shared preferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.clear();
+
+        if (context.mounted) {
+          Navigator.pushReplacementNamed(context, '/signin');
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error during logout. Please try again.')),
+          );
+        }
       }
     }
   }
 
-  Future<void> _showLogoutDialog(BuildContext context) async {
-    return showDialog(
+  Future<bool> _showLogoutDialog(BuildContext context) async {
+    return await showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Confirm Logout'),
-          content: const Text('Are you sure you want to logout?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _handleLogout(context);
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red,
-              ),
-              child: const Text('Logout'),
-            ),
-          ],
-        );
-      },
-    );
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    ) ?? false;
   }
 
   @override
@@ -190,6 +169,42 @@ class _HomepageState extends State<Homepage> {
           },
         ),
         actions: [
+          if (isAdmin)
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                switch (value) {
+                  case 'manage_meals':
+                    Navigator.pushNamed(context, '/manage-meals');
+                    break;
+                  case 'manage_users':
+                    Navigator.pushNamed(context, '/users');
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'manage_meals',
+                  child: Row(
+                    children: [
+                      Icon(Icons.restaurant_menu),
+                      SizedBox(width: 8),
+                      Text('Manage Meals'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'manage_users',
+                  child: Row(
+                    children: [
+                      Icon(Icons.people),
+                      SizedBox(width: 8),
+                      Text('Manage Users'),
+                    ],
+                  ),
+                ),
+              ],
+              icon: const Icon(Icons.admin_panel_settings),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: IconButton(
@@ -201,7 +216,7 @@ class _HomepageState extends State<Homepage> {
             padding: const EdgeInsets.only(right: 8.0),
             child: IconButton(
               icon: const Icon(Icons.logout),
-              onPressed: () => _showLogoutDialog(context),
+              onPressed: () => _handleLogout(context),
             ),
           ),
         ],
