@@ -28,8 +28,10 @@ class _HomepageState extends State<Homepage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       token = prefs.getString('token');
+      final adminStatus = prefs.getBool('isAdmin') ?? false;
+      debugPrint('Homepage - Admin status: $adminStatus');
       setState(() {
-        isAdmin = prefs.getBool('isAdmin') ?? false;
+        isAdmin = adminStatus;
       });
       await fetchMeals();
     } catch (e) {
@@ -107,6 +109,34 @@ class _HomepageState extends State<Homepage> {
     }
   }
 
+  Future<void> _showLogoutDialog(BuildContext context) async {
+    return showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Confirm Logout'),
+          content: const Text('Are you sure you want to logout?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _handleLogout(context);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Logout'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -124,7 +154,7 @@ class _HomepageState extends State<Homepage> {
           tooltip: 'Menu',
           icon: const Icon(Icons.menu, size: 28),
           itemBuilder: (context) => [
-            if (isAdmin)
+            if (isAdmin) ...[
               PopupMenuItem(
                 value: 'manage_meals',
                 child: Row(
@@ -135,10 +165,27 @@ class _HomepageState extends State<Homepage> {
                   ],
                 ),
               ),
+              PopupMenuItem(
+                value: 'users',
+                child: Row(
+                  children: [
+                    Icon(Icons.people, color: Theme.of(context).primaryColor),
+                    const SizedBox(width: 8),
+                    const Text('User Management'),
+                  ],
+                ),
+              ),
+            ],
+            PopupMenuItem(
+              enabled: false,
+              child: Text('Admin: $isAdmin'),
+            ),
           ],
           onSelected: (value) {
             if (value == 'manage_meals') {
-              Navigator.pushNamed(context, '/manage_meals').then((_) => fetchMeals());
+              Navigator.pushNamed(context, '/manage-meals').then((_) => fetchMeals());
+            } else if (value == 'users') {
+              Navigator.pushNamed(context, '/users');
             }
           },
         ),
@@ -146,7 +193,7 @@ class _HomepageState extends State<Homepage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: IconButton(
-              icon: const Icon(Icons.shopping_basket),
+              icon: const Icon(Icons.shopping_cart_outlined, size: 28),
               onPressed: () => Navigator.pushNamed(context, '/basket'),
             ),
           ),
@@ -154,8 +201,8 @@ class _HomepageState extends State<Homepage> {
             padding: const EdgeInsets.only(right: 8.0),
             child: IconButton(
               icon: const Icon(Icons.logout),
-              onPressed: () => _handleLogout(context),
-              ),
+              onPressed: () => _showLogoutDialog(context),
+            ),
           ),
         ],
       ),
@@ -188,7 +235,7 @@ class _HomepageState extends State<Homepage> {
                         mainAxisSpacing: 16,
                       ),
                       itemCount: meals.length,
-          itemBuilder: (BuildContext context, int index) {
+                      itemBuilder: (BuildContext context, int index) {
                         final meal = meals[index];
                         return GestureDetector(
                           onTap: () {
@@ -216,7 +263,7 @@ class _HomepageState extends State<Homepage> {
                                   ),
                                 ),
                                 Padding(
-              padding: const EdgeInsets.all(8.0),
+                                  padding: const EdgeInsets.all(8.0),
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
@@ -235,79 +282,28 @@ class _HomepageState extends State<Homepage> {
                                           color: Theme.of(context).primaryColor,
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: ElevatedButton(
-                                          onPressed: () {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(
-                                                content: Text('Added to cart'),
-                                                duration: Duration(seconds: 1),
-                                              ),
-                                            );
-                                          },
-                                          child: const Text('Add to Cart'),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Tap to view details',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                          fontStyle: FontStyle.italic,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
                               ],
-                ),
-              ),
-            );
-          },
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
-        ),
-      ),
+              ),
+            ),
     );
   }
 }
-
-
-
-
-// import 'package:flutter/material.dart';
-// import 'package:mid_app/components/meal_cards.dart';
-
-// class Homepage extends StatelessWidget {
-//   const Homepage({super.key});
-
-//   @override
-//   Widget build(BuildContext context) {
-//     final List<Map<String, String>> mealData = [
-//       {'title': 'Valid Title 1', 'price': '200.20', 'imageurl': 'https://th.bing.com/th/id/OIP.c6Tbz7IbCn9bVXzXQSOqhgHaFN?rs=1&pid=ImgDetMain'},
-//       {'title': 'Valid Title 2', 'price': '150.00', 'imageurl': 'https://th.bing.com/th/id/OIP.c6Tbz7IbCn9bVXzXQSOqhgHaFN?rs=1&pid=ImgDetMain'},
-//       {'title': 'Valid Title 3', 'price': '300.50', 'imageurl': 'https://th.bing.com/th/id/OIP.c6Tbz7IbCn9bVXzXQSOqhgHaFN?rs=1&pid=ImgDetMain'},
-//     ];
-
-//     return Scaffold(
-//       appBar: AppBar(
-//         title: const Text('Homepage'),
-//       ),
-//       body: SizedBox(
-//         height: 180,
-//         child: ListView.builder(
-//           scrollDirection: Axis.horizontal,
-//           itemCount: mealData.length,
-//           itemBuilder: (BuildContext context, int index) {
-//             return Padding(
-//               padding: const EdgeInsets.all(8.0),
-//               child: SizedBox(
-//                 width: 100,
-//                 child: MealCard(
-//                   title: mealData[index]['title']!,
-//                   price: mealData[index]['price']!,
-//                   imageurl: mealData[index]['imageurl']!,
-//                 ),
-//               ),
-//             );
-//           },
-//         ),
-//       ),
-//     );
-//   }
-// }

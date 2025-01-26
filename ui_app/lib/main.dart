@@ -5,7 +5,10 @@ import 'package:mid_app/pages/homepage.dart';
 import 'package:mid_app/pages/basketpage.dart';
 import 'package:mid_app/pages/manage_meals_page.dart';
 import 'package:mid_app/pages/orderplaced_page.dart';
+import 'package:mid_app/pages/users_access_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import 'providers/cart_provider.dart';
 
 Future<void> main() async {
   try {
@@ -13,11 +16,21 @@ Future<void> main() async {
     final prefs = await SharedPreferences.getInstance();
     // Clear any existing data to ensure fresh state
     await prefs.clear();
-    runApp(const MyApp());
+    runApp(
+      ChangeNotifierProvider(
+        create: (ctx) => CartProvider(),
+        child: const MyApp(),
+      ),
+    );
   } catch (e) {
     print('Initialization error: $e');
     // Ensure the app still runs even if there's an initialization error
-    runApp(const MyApp());
+    runApp(
+      ChangeNotifierProvider(
+        create: (ctx) => CartProvider(),
+        child: const MyApp(),
+      ),
+    );
   }
 }
 
@@ -39,7 +52,8 @@ class MyApp extends StatelessWidget {
         '/signup': (context) => SignUpPage(),
         '/home': (context) => const Homepage(),
         '/basket': (context) => const Basketpage(),
-        '/manage_meals': (context) => const ManageMealsPage(),
+        '/manage-meals': (context) => const ManageMealsPage(),
+        '/users': (context) => const UsersAccessPage(),
         '/orderplaced': (context) => const OrderPlacedPage(),
       },
     );

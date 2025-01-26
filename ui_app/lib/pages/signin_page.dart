@@ -4,126 +4,61 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SignInPage extends StatefulWidget {
+  const SignInPage({super.key});
+
   @override
-  _SignInPageState createState() => _SignInPageState();
+  State<SignInPage> createState() => _SignInPageState();
 }
 
 class _SignInPageState extends State<SignInPage> {
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _isLoading = false;
-  String _errorMessage = '';
+  bool _obscurePassword = true;
 
-  @override
-  void initState() {
-    super.initState();
-    _checkExistingSession();
-  }
+  Future<void> _signIn() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  Future<void> _checkExistingSession() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
-      if (token != null && mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-      }
-    } catch (e) {
-      print('Error checking session: $e');
-    }
-  }
-
-  Future<void> _saveUserData(Map<String, dynamic> userData) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', userData['access']);
-      await prefs.setBool('isAdmin', userData['is_admin'] ?? false);
-    } catch (e) {
-      print('Error saving user data: $e');
-      throw Exception('Failed to save user data');
-    }
-  }
-
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _signin() async {
-    if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
-      _showErrorDialog('Please fill in all fields');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
+    setState(() => _isLoading = true);
 
     try {
-    final response = await http.post(
-      Uri.parse('http://127.0.0.1:8000/api/token/'),
-      body: jsonEncode({
-        'username': _usernameController.text,
-        'password': _passwordController.text,
-      }),
-      headers: {'Content-Type': 'application/json'},
-    );
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:8000/api/signin/'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': _emailController.text.trim(),
+          'password': _passwordController.text,
+        }),
+      );
 
-    if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        
-        // Store the token and admin status
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('token', responseData['access']);
-        
-        // Set admin status to true for testing (remove this in production)
-        await prefs.setBool('isAdmin', true);
-        
+        await prefs.setString('token', data['token']);
+        await prefs.setString('username', data['user']['username']);
+        await prefs.setBool('isAdmin', data['user']['is_admin']);
+
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/home');
         }
       } else {
-        String errorMessage;
-        try {
-          final responseData = json.decode(response.body);
-          if (response.statusCode == 401) {
-            errorMessage = 'Invalid username or password';
-          } else if (response.statusCode == 404) {
-            errorMessage = 'User does not exist. Please create an account.';
-    } else {
-            errorMessage = responseData['detail'] ?? 'Login failed. Please try again.';
-          }
-        } catch (e) {
-          errorMessage = 'Server error: ${response.statusCode}';
-        }
-        setState(() {
-          _errorMessage = errorMessage;
-        });
-        _showErrorDialog(errorMessage);
+        final error = json.decode(response.body)['error'];
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error ?? 'Sign in failed')),
+        );
       }
     } catch (e) {
-      print('Error during sign in: $e');
-      const errorMessage = 'Connection error. Please check if the server is running on the correct port (8000).';
-      setState(() {
-        _errorMessage = errorMessage;
-      });
-      _showErrorDialog(errorMessage);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Connection error')),
+        );
+      }
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -134,62 +69,87 @@ class _SignInPageState extends State<SignInPage> {
       appBar: AppBar(
         title: const Text('Sign In'),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              controller: _usernameController,
-              decoration: const InputDecoration(
-                labelText: 'Username',
-                border: OutlineInputBorder(),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 32),
+              Icon(
+                Icons.restaurant_menu,
+                size: 100,
+                color: Theme.of(context).primaryColor,
               ),
-              enabled: !_isLoading,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _passwordController,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                border: OutlineInputBorder(),
-              ),
-              obscureText: true,
-              enabled: !_isLoading,
-            ),
-            const SizedBox(height: 20),
-            if (_errorMessage.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Text(
-                  _errorMessage,
-                  style: const TextStyle(color: Colors.red),
+              const SizedBox(height: 32),
+              TextFormField(
+                controller: _emailController,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
                 ),
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter your email';
+                  }
+                  if (!value.contains('@') || !value.contains('.')) {
+                    return 'Please enter a valid email';
+                  }
+                  return null;
+                },
               ),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _signin,
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _passwordController,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() => _obscurePassword = !_obscurePassword);
+                    },
+                  ),
+                  border: const OutlineInputBorder(),
+                ),
+                obscureText: _obscurePassword,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter your password';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _signIn,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
                 child: _isLoading
                     ? const SizedBox(
                         height: 20,
                         width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Sign In'),
+                    : const Text(
+                        'Sign In',
+                        style: TextStyle(fontSize: 16),
+                      ),
               ),
-            ),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: _isLoading
-                  ? null
-                  : () => Navigator.pushReplacementNamed(context, '/signup'),
-              child: const Text('Don\'t have an account? Sign Up'),
-            ),
-          ],
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () => Navigator.pushNamed(context, '/signup'),
+                child: const Text("Don't have an account? Sign Up"),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -197,7 +157,7 @@ class _SignInPageState extends State<SignInPage> {
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }

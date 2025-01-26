@@ -25,9 +25,14 @@ class _ManageMealsPageState extends State<ManageMealsPage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       token = prefs.getString('token');
-      if (token == null) {
+      final isAdmin = prefs.getBool('isAdmin') ?? false;
+      
+      if (token == null || !isAdmin) {
         if (mounted) {
-          Navigator.pushReplacementNamed(context, '/signin');
+          Navigator.pushReplacementNamed(context, '/home');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Unauthorized access. Admin privileges required.')),
+          );
         }
         return;
       }
@@ -267,4 +272,4 @@ class _ManageMealsPageState extends State<ManageMealsPage> {
                 ),
     );
   }
-} 
+}
